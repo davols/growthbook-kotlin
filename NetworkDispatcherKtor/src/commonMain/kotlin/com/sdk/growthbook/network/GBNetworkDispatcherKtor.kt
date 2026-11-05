@@ -279,7 +279,14 @@ class GBNetworkDispatcherKtor(
                 try {
                     prepareGetRequest(url, bounded = false).execute { response ->
                         val channel: ByteReadChannel = response.body()
+                        val isEventStream = response.status == HttpStatusCode.OK &&
+                            response.headers["Content-Type"]?.substringBefore(';')?.trim()
+                                ?.equals("text/event-stream", ignoreCase = true) == true
                         channel.readSse(
+                            onHeartbeat = {
+                                // Heartbeats prove stream activity, but are not feature JSON.
+                                if (isEventStream) retryManager.reset()
+                            },
                             onSseEvent = { sseEvent ->
                                 retryManager.reset()
                                 if (enableLogging) {

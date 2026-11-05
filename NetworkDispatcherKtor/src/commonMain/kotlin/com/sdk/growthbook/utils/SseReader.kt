@@ -8,25 +8,37 @@ import io.ktor.utils.io.readUTF8Line
  * validate it and send it to onSseEvent callback
  */
 internal suspend fun ByteReadChannel.readSse(
+    onHeartbeat: () -> Unit = {},
     onSseEvent: (Resource<String>) -> (Unit)
 ) {
     var data: String? = null
+    var hasEmptyData = false
 
     while (!isClosedForRead) {
+        val line = readUTF8Line()
+        if (line?.startsWith(":") == true) {
+            onHeartbeat()
+            continue
+        }
         parseSseLine(
-            line = readUTF8Line(),
+            line = line,
             onSseResponse = { sseRawEvent ->
                 when (sseRawEvent) {
                     SseResponse.End -> {
                         if (!data.isNullOrEmpty()) {
                             onSseEvent(Resource.Success(data ?: ""))
                             data = null
+                        } else if (hasEmptyData) {
+                            onHeartbeat()
                         }
+                        hasEmptyData = false
                     }
 
                     is SseResponse.Data -> {
                         if (sseRawEvent.value.isNotEmpty()) {
                             data = sseRawEvent.value
+                        } else {
+                            hasEmptyData = true
                         }
                     }
 
